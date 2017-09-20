@@ -152,6 +152,21 @@ func ReplaceNativeMessage(e error, msg string) Error {
 	}
 }
 
+// AsType "casts" an input error as a target merry.Error such that the returned merry Error evaluates
+// to true when operating Is(newErr, targetErr)
+func AsType(i error, targetType Error) Error {
+	target := targetType.(*merryErr)
+	target.err = i
+	target.WithValue(stack, captureStack(1))
+
+	inputMap := Values(i)
+	for k, v := range inputMap {
+		target = target.WithValue(k, v).(*merryErr)
+	}
+
+	return target
+}
+
 // WithValue adds a context an error.  If the key was already set on e,
 // the new value will take precedence.
 // If e is nil, returns nil.

@@ -521,6 +521,13 @@ func TestVerboseDefault(t *testing.T) {
 	assert.Equal(t, "yikes", s)
 }
 
+func TestAsType(t *testing.T) {
+	origin := errors.New("origin")
+	castType := New("castType")
+	newErr := AsType(origin, castType)
+	assert.True(t, Is(newErr, castType))
+}
+
 func TestMerryErr_Error(t *testing.T) {
 	origVerbose := verbose
 	defer func() {
