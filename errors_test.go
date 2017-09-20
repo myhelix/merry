@@ -525,7 +525,7 @@ func TestAsType(t *testing.T) {
 
 	/*
 	* Test when the original error and the castType error are all merry errors
-	*/
+	 */
 	origin := New("origin")
 	originStackTrace := Stacktrace(origin)
 
@@ -540,7 +540,7 @@ func TestAsType(t *testing.T) {
 	assert.False(t, Is(newMerryErr, origin))
 
 	// test new error message is <castType error message>: <original error message>
-	assert.Equal(t, newMerryErr.Error(), castType.Error() + ": " + origin.Error())
+	assert.Equal(t, newMerryErr.Error(), castType.Error()+": "+origin.Error())
 	assert.NotEqual(t, newMerryErr.Error(), origin.Error())
 
 	// newMerryErr is not equal of original error any more but has the same stack trace as origin
@@ -552,7 +552,7 @@ func TestAsType(t *testing.T) {
 
 	/*
 	* Test when the original error is Go library error and the castType error is a merry error
-	*/
+	 */
 	libErr := errors.New("Go library error")
 	newMerryErr, ok = AsType(libErr, castType)
 	libErrStackTrace := Stacktrace(libErr)
@@ -563,7 +563,7 @@ func TestAsType(t *testing.T) {
 	assert.True(t, ok)
 
 	// test new error message is <castType error message>: <original error message>
-	assert.Equal(t, newMerryErr.Error(), castType.Error() + ": " + libErr.Error())
+	assert.Equal(t, newMerryErr.Error(), castType.Error()+": "+libErr.Error())
 
 	// The original libErr's StackTrace should be empty, but the newMerryErr has its non-empty StackTrace
 	assert.Equal(t, libErrStackTrace, "")
@@ -575,7 +575,7 @@ func TestAsType(t *testing.T) {
 	/*
 	* Test when the castType error is nil:
 	* - return wrap(origin), false
-	*/
+	 */
 	var nilCastType Error
 
 	newMerryErr, ok = AsType(origin, nilCastType)
@@ -595,7 +595,7 @@ func TestAsType(t *testing.T) {
 	/*
 	* Test when the original error is nil:
 	* - return nil, false
-	*/
+	 */
 
 	var nilOrigin Error
 	newMerryErr, ok = AsType(nilOrigin, castType)
