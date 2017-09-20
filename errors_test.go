@@ -522,17 +522,27 @@ func TestVerboseDefault(t *testing.T) {
 }
 
 func TestAsType(t *testing.T) {
-	origin := errors.New("origin")
+	origin := New("origin")
+	originStackTrace := Stacktrace(origin)
+
 	castType := New("castType")
+	castTypeTrace := Stacktrace(castType)
+
 	newMerryErr := AsType(origin, castType)
 
+	// test new merry error is castType
 	assert.True(t, Is(newMerryErr, castType))
 	assert.Equal(t, newMerryErr.Error(), castType.Error())
 
+	// newMerryErr is not equal of original error any more but has the same stack trace as origin
 	assert.False(t, Is(newMerryErr, origin))
 	assert.NotEqual(t, newMerryErr.Error(), origin.Error())
 
-	assert.Equal(t, Stacktrace(newMerryErr), Stacktrace(origin))
+	assert.Equal(t, Stacktrace(newMerryErr), originStackTrace)
+	assert.NotEqual(t, Stacktrace(newMerryErr), castTypeTrace)
+
+	// castType stack trace hasn't been changed
+	assert.Equal(t, Stacktrace(castType), castTypeTrace)
 }
 
 func TestMerryErr_Error(t *testing.T) {
