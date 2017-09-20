@@ -165,7 +165,7 @@ func AsType(e error, targetType Error) Error {
 		return Wrap(e)
 	}
 
-	output := targetType
+	output := targetType.Here()
 	output = output.WithValue(stack, Value(e, stack))
 
 	inputMap := Values(e)
