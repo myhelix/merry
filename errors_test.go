@@ -528,7 +528,8 @@ func TestAsType(t *testing.T) {
 	castType := New("castType")
 	castTypeTrace := Stacktrace(castType)
 
-	newMerryErr := AsType(origin, castType)
+	newMerryErr, ok := AsType(origin, castType)
+	assert.True(t, ok)
 
 	// test new merry error is castType
 	assert.True(t, Is(newMerryErr, castType))
