@@ -532,7 +532,8 @@ func TestAsType(t *testing.T) {
 	castType := New("castType")
 	castTypeTrace := Stacktrace(castType)
 
-	newMerryErr := AsType(origin, castType)
+	newMerryErr, ok := AsType(origin, castType)
+	assert.True(t, ok)
 
 	// test new merry error is castType, instead of origin's type
 	assert.True(t, Is(newMerryErr, castType))
@@ -553,12 +554,13 @@ func TestAsType(t *testing.T) {
 	* Test when the original error is Go library error and the castType error is a merry error
 	*/
 	libErr := errors.New("Go library error")
-	newMerryErr = AsType(libErr, castType)
+	newMerryErr, ok = AsType(libErr, castType)
 	libErrStackTrace := Stacktrace(libErr)
 
 	// test new merry error is castType, instead of origin's type
 	assert.True(t, Is(newMerryErr, castType))
 	assert.False(t, Is(newMerryErr, libErr))
+	assert.True(t, ok)
 
 	// test new error message is <castType error message>: <original error message>
 	assert.Equal(t, newMerryErr.Error(), castType.Error() + ": " + libErr.Error())
@@ -572,11 +574,13 @@ func TestAsType(t *testing.T) {
 
 	/*
 	* Test when the castType error is nil:
-	* - return wrap(origin)
+	* - return wrap(origin), false
 	*/
 	var nilCastType Error
 
-	newMerryErr = AsType(origin, nilCastType)
+	newMerryErr, ok = AsType(origin, nilCastType)
+
+	assert.False(t, ok)
 
 	// newMerryErr has the same stack trace as origin
 	assert.Equal(t, Stacktrace(newMerryErr), originStackTrace)
@@ -590,11 +594,13 @@ func TestAsType(t *testing.T) {
 
 	/*
 	* Test when the original error is nil:
-	* - return nil
+	* - return nil, false
 	*/
 
 	var nilOrigin Error
-	newMerryErr = AsType(nilOrigin, castType)
+	newMerryErr, ok = AsType(nilOrigin, castType)
+
+	assert.False(t, ok)
 
 	// newMerryErr is nil
 	assert.Equal(t, nilOrigin, nil)
@@ -604,7 +610,7 @@ func TestAsType(t *testing.T) {
 	// But if only one of the two params passed in Is() is nil, it returns false
 	assert.True(t, Is(newMerryErr, nilOrigin))
 	assert.False(t, Is(newMerryErr, castType))
-
+	assert.False(t, ok)
 
 }
 

@@ -156,13 +156,13 @@ func ReplaceNativeMessage(e error, msg string) Error {
 // to true when operating Is(newErr, targetErr). If e is nil, return nil. If targetType is nil,
 // A wrapped merry Error of e is returned. The key value pairs of the targetType is kept and then
 // appended with key value map from the input error. Stack trace of the original input error is maintained.
-func AsType(e error, targetType Error) Error {
+func AsType(e error, targetType Error) (Error, bool) {
 	if targetType == nil {
-		return Wrap(e)
+		return Wrap(e), false
 	}
 	switch e.(type) {
 	case nil:
-		return nil
+		return nil, false
 
 	case *merryErr:
 		output := targetType.Here()
@@ -172,11 +172,11 @@ func AsType(e error, targetType Error) Error {
 		for k, v := range inputMap {
 			output = output.WithValue(k, v)
 		}
-		return Append(output, e.Error())
+		return Append(output, e.Error()), true
 
 	default:
 		output := targetType.Here()
-		return Append(output, e.Error())
+		return Append(output, e.Error()), true
 	}
 }
 
