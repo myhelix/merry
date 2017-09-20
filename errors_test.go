@@ -524,8 +524,15 @@ func TestVerboseDefault(t *testing.T) {
 func TestAsType(t *testing.T) {
 	origin := errors.New("origin")
 	castType := New("castType")
-	newErr := AsType(origin, castType)
-	assert.True(t, Is(newErr, castType))
+	newMerryErr := AsType(origin, castType)
+
+	assert.True(t, Is(newMerryErr, castType))
+	assert.Equal(t, newMerryErr.Error(), castType.Error())
+
+	assert.False(t, Is(newMerryErr, origin))
+	assert.NotEqual(t, newMerryErr.Error(), origin.Error())
+
+	assert.Equal(t, Stacktrace(newMerryErr), Stacktrace(origin))
 }
 
 func TestMerryErr_Error(t *testing.T) {

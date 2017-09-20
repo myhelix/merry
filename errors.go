@@ -153,18 +153,27 @@ func ReplaceNativeMessage(e error, msg string) Error {
 }
 
 // AsType "casts" an input error as a target merry.Error such that the returned merry Error evaluates
-// to true when operating Is(newErr, targetErr)
-func AsType(i error, targetType Error) Error {
-	target := targetType.(*merryErr)
-	target.err = i
-	target.WithValue(stack, captureStack(1))
-
-	inputMap := Values(i)
-	for k, v := range inputMap {
-		target = target.WithValue(k, v).(*merryErr)
+// to true when operating Is(newErr, targetErr). If e is nil, return nil. If targetType is nil,
+// A wrapped merry Error of e is returned. The key value pairs of the targetType is kept and then
+// appended with key value map from the input error. Stack trace of the original input error is maintained.
+func AsType(e error, targetType Error) Error {
+	if e == nil {
+		return nil
 	}
 
-	return target
+	if targetType == nil {
+		return Wrap(e)
+	}
+
+	output := targetType
+	output = output.WithValue(stack, Value(e, stack))
+
+	inputMap := Values(e)
+	for k, v := range inputMap {
+		output = output.WithValue(k, v)
+	}
+
+	return output
 }
 
 // WithValue adds a context an error.  If the key was already set on e,
