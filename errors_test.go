@@ -3,13 +3,12 @@ package merry
 import (
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestNew(t *testing.T) {
@@ -520,127 +519,6 @@ func TestVerboseDefault(t *testing.T) {
 	assert.Equal(t, "yikes", s)
 }
 
-func TestAsType_NilInput(t *testing.T) {
-	/*
-	* Test when the castType error is nil:
-	* - return wrap(origin), false
-	 */
-	origin := New("origin")
-	originStackTrace := Stacktrace(origin)
-
-	castType := New("castType")
-	castTypeTrace := Stacktrace(castType)
-
-	var nilCastType Error
-
-	newMerryErr, ok := AsType(origin, nilCastType)
-
-	assert.False(t, ok)
-
-	// newMerryErr has the same stack trace as origin
-	assert.Equal(t, Stacktrace(newMerryErr), originStackTrace)
-	assert.NotEqual(t, Stacktrace(newMerryErr), castTypeTrace)
-
-	// newMerryErr has the same error message as origin
-	assert.Equal(t, origin.Error(), newMerryErr.Error())
-
-	// the newMerryErr should remain the same type as origin, different from castType
-	assert.True(t, Is(newMerryErr, origin))
-	assert.False(t, Is(newMerryErr, nilCastType))
-
-	/*
-	* Test when the original error is nil:
-	* - return nil, false
-	 */
-
-	var nilOrigin Error
-	newMerryErr, ok = AsType(nilOrigin, castType)
-
-	assert.False(t, ok)
-
-	// newMerryErr is nil
-	assert.Equal(t, nil, nilOrigin)
-	assert.Equal(t, nil, newMerryErr)
-
-	// newMerryErr and nilOrigin are both nil, thus Is(newMerryErr, nilOrigin) return true
-	// But if only one of the two params passed in Is() is nil, it returns false
-	assert.True(t, Is(newMerryErr, nilOrigin))
-	assert.False(t, Is(newMerryErr, castType))
-	assert.False(t, ok)
-}
-
-/*
-* Test when the original error is Go library error and the castType error is a merry error
- */
-func TestAsType_NonMerryInput(t *testing.T) {
-	libErr := errors.New("Go library error")
-	libErrStackTrace := Stacktrace(libErr)
-	castType := New("castType")
-	castTypeTrace := Stacktrace(castType)
-
-	newMerryErr, ok := AsType(libErr, castType)
-
-	// test new merry error is castType, instead of origin's type
-	assert.True(t, Is(newMerryErr, castType))
-	assert.False(t, Is(newMerryErr, libErr))
-	assert.True(t, ok)
-
-	// test new error message is <castType error message>: <original error message>
-	assert.Equal(t, castType.Error()+": "+libErr.Error(), newMerryErr.Error())
-
-	// The original libErr's StackTrace should be empty, but the newMerryErr has its non-empty StackTrace
-	assert.Equal(t, "", libErrStackTrace)
-	assert.NotEqual(t, "", newMerryErr)
-
-	// castType stack trace hasn't been changed
-	assert.Equal(t, Stacktrace(castType), castTypeTrace)
-}
-
-func TestAsType_NormalCase(t *testing.T) {
-	/*
-	* Test when the original error and the castType error are all merry errors
-	 */
-	origin := New("origin")
-	originStackTrace := Stacktrace(origin)
-
-	castType := New("castType")
-	castTypeTrace := Stacktrace(castType)
-
-	newMerryErr, ok := AsType(origin, castType)
-	assert.True(t, ok)
-
-	// test new merry error is castType, instead of origin's type
-	assert.True(t, Is(newMerryErr, castType))
-	assert.False(t, Is(newMerryErr, origin))
-
-	// test new error message is <castType error message>: <original error message>
-	assert.Equal(t, castType.Error()+": "+origin.Error(), newMerryErr.Error())
-	assert.NotEqual(t, origin.Error(), newMerryErr.Error())
-
-	// newMerryErr is not equal of original error any more but has the same stack trace as origin
-	assert.Equal(t, Stacktrace(newMerryErr), originStackTrace)
-	assert.NotEqual(t, Stacktrace(newMerryErr), castTypeTrace)
-
-	// castType stack trace hasn't been changed
-	assert.Equal(t, Stacktrace(castType), castTypeTrace)
-
-	/*
-	* Test if input key-value pairs have priority over castType
-	 */
-	origin = WithValue(origin, "foo", "bar1")
-	castType = WithValue(castType, "foo", "bar2")
-	newMerryErr, ok = AsType(origin, castType)
-
-	// test new merry error is castType, instead of origin's type
-	assert.True(t, Is(newMerryErr, castType))
-	assert.False(t, Is(newMerryErr, origin))
-	assert.True(t, ok)
-
-	// Value(newMerryErr, "foo") should be the same as origin
-	assert.Equal(t, "bar1", Value(newMerryErr, "foo"))
-
-}
-
 func TestMerryErr_Error(t *testing.T) {
 	origVerbose := verbose
 	defer func() {
@@ -696,4 +574,100 @@ func BenchmarkNew_withoutStackCapture(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		New("boom")
 	}
+}
+
+func TestWithErrorIdentity(t *testing.T) {
+	err := New("original merry error")
+	id1 := New("this is the desired merry error type 1")     // test merry error identity
+	id2 := errors.New("this is the desired go error type 2") // test go error identity
+	err = err.WithErrorIdentity(id1).WithErrorIdentity(id2)
+
+	expectedSlice := []error{id1, id2}
+	actualSlice, ok := Value(err, additionalErrorIdentities).([]error)
+
+	// assert identity slice of err is as expected
+	assert.True(t, ok)
+	assert.Equal(t, actualSlice, expectedSlice)
+}
+
+func TestWithErrorIdentity_RetainValues(t *testing.T) {
+	errA := New("error A").WithValue("k", "v")
+	errB := New("error B").Here().WithMessage("with message")
+	newErrB := errB.WithErrorIdentity(errA)
+
+	errB_map := Values(errB)
+	newErrB_map := Values(newErrB)
+
+	// test the new error's key-value pairs are retained from original error, plus the additional error identities pair
+	// and key-value pairs should not be inherited from the identity type
+	assert.NotEqual(t, nil, newErrB_map[stack])
+	assert.Equal(t, "with message", newErrB_map[message])
+	assert.Equal(t, 3, len(newErrB_map))
+	assert.Equal(t, nil, newErrB_map["k"])
+	assert.Equal(t, errB_map[stack], newErrB_map[stack])
+	assert.Equal(t, errB_map[message], newErrB_map[message])
+
+	identities, ok := newErrB_map[additionalErrorIdentities].([]error)
+	assert.True(t, ok)
+	assert.NotEqual(t, 0, len(identities))
+}
+
+func TestIs_RecognizeIdentity(t *testing.T) {
+	errA := New("error A").Here()
+	errB := New("error B").Append("append message")
+	errB = errB.WithErrorIdentity(errA)
+	expectedTypes_errB := []error{errA}
+	errB_Types, B_ok := Value(errB, additionalErrorIdentities).([]error)
+
+	// the additional error identities are as expected
+	assert.True(t, B_ok)
+	assert.Equal(t, expectedTypes_errB, errB_Types)
+
+	// Is(errB, errA) returns true when errB is assigned identity errA
+	assert.True(t, Is(errB, errA))
+}
+
+func TestIs_Recurse(t *testing.T) {
+	errA := New("error A")
+	errB := New("error B")
+	errC := New("error C")
+	errD := New("error D")
+
+	// assign identities
+	// B<-A
+	// C<-B
+	// C<-D
+	errB = errB.WithErrorIdentity(errA)
+	errC = errC.WithErrorIdentity(errB).WithErrorIdentity(errD)
+
+	// assert errB's identities containing errA, and Is() indicates errB is of type errA
+	expectedTypes_errB := []error{errA}
+	errB_Types, B_ok := Value(errB, additionalErrorIdentities).([]error)
+	assert.True(t, B_ok)
+	assert.Equal(t, expectedTypes_errB, errB_Types)
+	assert.True(t, Is(errB, errA))
+
+	// assert errC's identities containing errB and errD
+	expectedTypes_errC := []error{errB, errD}
+	errC_Types, C_ok := Value(errC, additionalErrorIdentities).([]error)
+	assert.True(t, C_ok)
+	assert.Equal(t, expectedTypes_errC, errC_Types)
+	// assert Is() indicates errC is of type err A, errB, and errD
+	assert.True(t, Is(errC, errA))
+	assert.True(t, Is(errC, errB))
+	assert.True(t, Is(errC, errD))
+
+	// assign errA the identity of type errC (who's identity descendant contains errA, errB and errD)
+	newErrA := errA.WithErrorIdentity(errC)
+	newErrA_Types, A_ok := Value(newErrA, additionalErrorIdentities).([]error)
+	expectedTypes_newErrA := []error{errC}
+
+	// newErrA's identity slice (children) contains only errC
+	assert.True(t, A_ok)
+	assert.Equal(t, expectedTypes_newErrA, newErrA_Types)
+	// Is() indicates that newErrA is of type errA, errB, errC and errD
+	assert.True(t, Is(newErrA, errA))
+	assert.True(t, Is(newErrA, errB))
+	assert.True(t, Is(newErrA, errC))
+	assert.True(t, Is(newErrA, errD))
 }

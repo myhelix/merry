@@ -85,6 +85,7 @@ type Error interface {
 	Here() Error
 	WithStackSkipping(skip int) Error
 	WithHTTPCode(code int) Error
+	WithErrorIdentity(errId error) Error
 	fmt.Formatter
 }
 
@@ -149,34 +150,6 @@ func ReplaceNativeMessage(e error, msg string) Error {
 		return wrapped.Prepend(msg)
 	} else {
 		return wrapped.WithValue("error", e.Error()).WithMessage(msg)
-	}
-}
-
-// AsType "casts" an input error as a target merry.Error such that the returned merry Error evaluates
-// to true when operating Is(newErr, targetErr). If e is nil, return nil. If targetType is nil,
-// A wrapped merry Error of e is returned. The key value pairs of the targetType is kept and then
-// appended with key value map from the input error. Stack trace of the original input error is maintained.
-func AsType(e error, targetType Error) (Error, bool) {
-	if targetType == nil {
-		return Wrap(e), false
-	}
-	switch e.(type) {
-	case nil:
-		return nil, false
-
-	case *merryErr:
-		output := targetType.Here()
-		output = output.WithValue(stack, Value(e, stack))
-
-		inputMap := Values(e)
-		for k, v := range inputMap {
-			output = output.WithValue(k, v)
-		}
-		return Append(output, e.Error()), true
-
-	default:
-		output := targetType.Here()
-		return Append(output, e.Error()), true
 	}
 }
 
@@ -378,7 +351,11 @@ func Prependf(e error, format string, args ...interface{}) Error {
 	return WrapSkipping(e, 1).Prependf(format, args...)
 }
 
-// Is checks whether e is equal to or wraps the original, at any depth.
+// Is checks whether e is equal to or wraps the original at any depth.
+// Based on this, Is is modified to also return true if e's identities
+// collections has an error which equals to or wraps the original.
+// Is would search recursively in the error identity tree.
+
 // If e == nil, return false.
 // This is useful if your package uses the common golang pattern of
 // exported error constants.  If your package exports an ErrEOF constant,
@@ -397,28 +374,45 @@ func Prependf(e error, format string, args ...interface{}) Error {
 //
 //     if merry.Is(err, urpack.ErrEOF) {
 //
+
+// We could use errA.WithErrorIdentity(errB) to add errB into errA's
+// error identity slice. Is(errA, errX) would return true if any of the
+// below condition is satisfied:
+// 1. errX is in errA's identity collection tree
+// 2. errX is wrapped by any element in errA's identity collection tree
+//
+// This modification is for error identification and categorization purpose.
+
 func Is(e error, originals ...error) bool {
-	is := func(e, original error) bool {
-		for {
-			if e == original {
-				return true
-			}
-			if e == nil || original == nil {
-				return false
-			}
-			w, ok := e.(*merryErr)
-			if !ok {
-				return false
-			}
-			e = w.err
-		}
-	}
 	for _, o := range originals {
 		if is(e, o) {
 			return true
 		}
 	}
 	return false
+}
+
+func is(e error, original error) bool {
+	for {
+		if e == original {
+			return true
+		}
+		if e == nil || original == nil {
+			return false
+		}
+		w, ok := e.(*merryErr)
+		if !ok {
+			return false
+		}
+		if ids, ok := Value(e, additionalErrorIdentities).([]error); ok {
+			for _, id := range ids {
+				if is(id, original) {
+					return true
+				}
+			}
+		}
+		e = w.err
+	}
 }
 
 // Unwrap returns the innermost underlying error.
@@ -451,10 +445,11 @@ func captureStack(skip int) []uintptr {
 type errorProperty string
 
 const (
-	stack       errorProperty = "stack"
-	message                   = "message"
-	httpCode                  = "http status code"
-	userMessage               = "user message"
+	stack                     errorProperty = "stack"
+	message                                 = "message"
+	httpCode                                = "http status code"
+	userMessage                             = "user message"
+	additionalErrorIdentities               = "additional error identities"
 )
 
 type merryErr struct {
@@ -597,4 +592,13 @@ func (e *merryErr) Prependf(format string, args ...interface{}) Error {
 		return nil
 	}
 	return e.Prepend(fmt.Sprintf(format, args...))
+}
+
+func (e *merryErr) WithErrorIdentity(errId error) Error {
+	var idents []error
+	if i, ok := Value(e, additionalErrorIdentities).([]error); ok {
+		idents = i
+	}
+	idents = append(idents, errId)
+	return e.WithValue(additionalErrorIdentities, idents)
 }
