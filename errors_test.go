@@ -3,13 +3,12 @@ package merry
 import (
 	"errors"
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"reflect"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestNew(t *testing.T) {
@@ -477,7 +476,6 @@ func TestValues(t *testing.T) {
 	e = WithValue(e, "key3", "val4")
 	values = Values(e)
 	assert.Equal(t, values["key3"], "val4")
-
 }
 
 func TestStackCaptureEnabled(t *testing.T) {
@@ -576,4 +574,100 @@ func BenchmarkNew_withoutStackCapture(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		New("boom")
 	}
+}
+
+func TestWithErrorIdentity(t *testing.T) {
+	err := New("original merry error")
+	id1 := New("this is the desired merry error type 1")     // test merry error identity
+	id2 := errors.New("this is the desired go error type 2") // test go error identity
+	err = err.WithErrorIdentity(id1).WithErrorIdentity(id2)
+
+	expectedSlice := []error{id1, id2}
+	actualSlice, ok := Value(err, additionalErrorIdentities).([]error)
+
+	// assert identity slice of err is as expected
+	assert.True(t, ok)
+	assert.Equal(t, actualSlice, expectedSlice)
+}
+
+func TestWithErrorIdentity_RetainValues(t *testing.T) {
+	errA := New("error A").WithValue("k", "v")
+	errB := New("error B").Here().WithMessage("with message")
+	newErrB := errB.WithErrorIdentity(errA)
+
+	errB_map := Values(errB)
+	newErrB_map := Values(newErrB)
+
+	// test the new error's key-value pairs are retained from original error, plus the additional error identities pair
+	// and key-value pairs should not be inherited from the identity type
+	assert.NotEqual(t, nil, newErrB_map[stack])
+	assert.Equal(t, "with message", newErrB_map[message])
+	assert.Equal(t, 3, len(newErrB_map))
+	assert.Equal(t, nil, newErrB_map["k"])
+	assert.Equal(t, errB_map[stack], newErrB_map[stack])
+	assert.Equal(t, errB_map[message], newErrB_map[message])
+
+	identities, ok := newErrB_map[additionalErrorIdentities].([]error)
+	assert.True(t, ok)
+	assert.NotEqual(t, 0, len(identities))
+}
+
+func TestIs_RecognizeIdentity(t *testing.T) {
+	errA := New("error A").Here()
+	errB := New("error B").Append("append message")
+	errB = errB.WithErrorIdentity(errA)
+	expectedTypes_errB := []error{errA}
+	errB_Types, B_ok := Value(errB, additionalErrorIdentities).([]error)
+
+	// the additional error identities are as expected
+	assert.True(t, B_ok)
+	assert.Equal(t, expectedTypes_errB, errB_Types)
+
+	// Is(errB, errA) returns true when errB is assigned identity errA
+	assert.True(t, Is(errB, errA))
+}
+
+func TestIs_Recurse(t *testing.T) {
+	errA := New("error A")
+	errB := New("error B")
+	errC := New("error C")
+	errD := New("error D")
+
+	// assign identities
+	// B<-A
+	// C<-B
+	// C<-D
+	errB = errB.WithErrorIdentity(errA)
+	errC = errC.WithErrorIdentity(errB).WithErrorIdentity(errD)
+
+	// assert errB's identities containing errA, and Is() indicates errB is of type errA
+	expectedTypes_errB := []error{errA}
+	errB_Types, B_ok := Value(errB, additionalErrorIdentities).([]error)
+	assert.True(t, B_ok)
+	assert.Equal(t, expectedTypes_errB, errB_Types)
+	assert.True(t, Is(errB, errA))
+
+	// assert errC's identities containing errB and errD
+	expectedTypes_errC := []error{errB, errD}
+	errC_Types, C_ok := Value(errC, additionalErrorIdentities).([]error)
+	assert.True(t, C_ok)
+	assert.Equal(t, expectedTypes_errC, errC_Types)
+	// assert Is() indicates errC is of type err A, errB, and errD
+	assert.True(t, Is(errC, errA))
+	assert.True(t, Is(errC, errB))
+	assert.True(t, Is(errC, errD))
+
+	// assign errA the identity of type errC (who's identity descendant contains errA, errB and errD)
+	newErrA := errA.WithErrorIdentity(errC)
+	newErrA_Types, A_ok := Value(newErrA, additionalErrorIdentities).([]error)
+	expectedTypes_newErrA := []error{errC}
+
+	// newErrA's identity slice (children) contains only errC
+	assert.True(t, A_ok)
+	assert.Equal(t, expectedTypes_newErrA, newErrA_Types)
+	// Is() indicates that newErrA is of type errA, errB, errC and errD
+	assert.True(t, Is(newErrA, errA))
+	assert.True(t, Is(newErrA, errB))
+	assert.True(t, Is(newErrA, errC))
+	assert.True(t, Is(newErrA, errD))
 }
